@@ -76,14 +76,10 @@ class PerfettoTraceManager:
         packet.timestamp = timestamp
         packet.trusted_packet_sequence_id = self.trusted_packet_sequence_id
         packet.track_event.type = pftrace.TrackEvent.Type.TYPE_COUNTER
-        # 兼容 float/int
-        if hasattr(packet.track_event, 'double_counter_value'):
-            packet.track_event.double_counter_value = float(value)
-        else:
-            packet.track_event.counter_value = int(value)
         packet.track_event.track_uuid = track_uuid
         packet.track_event.name = event_name
         packet.track_event.categories.append(category)
+        packet.track_event.double_counter_value = float(value)
         self.trace.packet.append(packet)
 
     def add_log_event(self, process_name: str, log_lines: List[str], track_name: str = "default_log_track"):
@@ -153,6 +149,10 @@ def create_track(parent_uuid: int, track_name: str, track_type: str) -> Tuple[pf
     track.track_descriptor.uuid = track_uuid
     track.track_descriptor.parent_uuid = parent_uuid
     track.track_descriptor.name = track_name
+    if track_type == 'counter':
+        counter = pftrace.CounterDescriptor()
+        counter.unit = pftrace.CounterDescriptor.Unit.UNIT_COUNT
+        track.track_descriptor.counter.CopyFrom(counter)
     return track, track_uuid
 
 def add_event(timestamp: int, track_uuid: int, event_name: str, category: str,
