@@ -1,0 +1,15 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# example_instant_ptrace.py 文件说明
+
+[example_instant_ptrace.py](mdc:example_instant_ptrace.py) 提供了一个Perfetto trace文件的手写示例，支持多种事件类型（INSTANT、SLICE、COUNTER、LOG），并通过 PerfettoTraceManager 类进行统一管理和写入。主要功能包括：
+
+- 支持进程、线程、track的灵活创建和管理
+- 可添加 INSTANT、SLICE、COUNTER、LOG 等多种事件
+- 支持自定义 process、thread、track 层级结构
+- 提供保存为 Perfetto trace 文件的接口
+
+适合用于学习 Perfetto trace 结构、调试 trace 生成、或自定义 trace 文件内容。

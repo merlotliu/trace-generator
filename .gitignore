@@ -1,0 +1,26 @@
+# Python 常见忽略项
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+*.tmp
+*.swp
+*.bak
+*.orig
+*.DS_Store
+.env
+.venv
+venv/
+ENV/
+env/
+.idea/
+.vscode/
+*.sqlite3
+*.db
+# Perfetto trace 文件
+*.perfetto 
