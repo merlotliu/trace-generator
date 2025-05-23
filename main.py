@@ -39,7 +39,7 @@ def main():
     gfx_data_list = load_json_data("/Users/liumoulu/logdoctor/data/HLX33B121R1647380/gfx/HLX33B121R1647380_gfx_2025-02-06-21-40-14_2025-02-06-22-10-14.json")
     gfx_track_config = {
         "gfx": [
-            {"field": "total_duration", "type": "slice", "tname": "total_duration", "ts": "current_time_millis", "timezone": "+0800", "duration_ms": 1000},
+            {"field": "total_duration", "type": "slice", "tname": "total_duration", "ts": "current_time_millis", "offset": "-$(total_duration)s", "timezone": "+0800", "duration_ms": "$(total_duration)"},
         ]
     }
     manager.json2perfetto(gfx_data_list, gfx_track_config)

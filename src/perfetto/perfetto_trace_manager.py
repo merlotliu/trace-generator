@@ -4,6 +4,7 @@ import uuid
 import time
 from typing import Dict, Tuple, Optional, List
 import datetime
+import re
 
 def uuid64():
     return uuid.uuid4().int >> 64
@@ -202,31 +203,61 @@ class TrackConfig:
         self.category = config.get("category", "default")
         self.duration_ms = config.get("duration_ms", None)
 
+def parse_template_value(val, item):
+    import re
+    if isinstance(val, str):
+        pattern = re.compile(r"\$\(([^)]+)\)")
+        def replacer(match):
+            key = match.group(1)
+            v = get_nested_value(item, key)
+            if v is None:
+                print(f"[WARN] parse_template_value: {key} not found in item {item}")
+                return ""
+            return str(v)
+        return pattern.sub(replacer, val)
+    return val
+
 class TrackProcessor:
     def __init__(self, manager):
         self.manager = manager
 
     def process(self, pname, json_data_list, track_config: TrackConfig):
         for item in json_data_list:
-            ts = parse_time_with_offset(item, track_config.ts_field, track_config.offset, track_config.timezone)
-            value = float(get_nested_value(item, track_config.field))
-            if track_config.track_type == "counter":
+            # 动态解析所有配置字段
+            resolved = {}
+            for key in vars(track_config):
+                val = getattr(track_config, key)
+                resolved[key] = parse_template_value(val, item) if isinstance(val, str) else val
+
+            ts = parse_time_with_offset(item, resolved.get("ts_field", "collect_time"), resolved.get("offset"), resolved.get("timezone", "+0800"))
+            value = float(get_nested_value(item, resolved.get("field")))
+            duration_ms_val = resolved.get("duration_ms", None)
+            if duration_ms_val not in (None, ""):
+                try:
+                    duration_ms_val = float(duration_ms_val)
+                except Exception:
+                    print(f"[WARN] duration_ms_val '{duration_ms_val}' cannot be converted to float")
+                    duration_ms_val = 0
+            else:
+                duration_ms_val = 0
+
+            if resolved.get("track_type") == "counter":
                 self.manager.add_counter_event(
                     process_name=pname,
-                    track_name=track_config.tname,
-                    event_name=track_config.field,
+                    track_name=resolved.get("tname"),
+                    event_name=resolved.get("field"),
                     timestamp=ts,
                     value=value,
-                    category=track_config.category
+                    category=resolved.get("category", "default")
                 )
-            if track_config.track_type == "slice":
+            if resolved.get("track_type") == "slice":
                 self.manager.add_slice_event(
                     process_name=pname,
-                    track_name=track_config.tname,
-                    event_name=track_config.field,
+                    track_name=resolved.get("tname"),
+                    event_name=resolved.get("field"),
                     timestamp=ts,
-                    duration_ns=track_config.duration_ms * 1_000_000,
-                    category=track_config.category
+                    duration_ns=int(duration_ms_val) * 1_000_000 if duration_ms_val is not None else 0,
+                    category=resolved.get("category", "default")
                 )
             # 可扩展更多类型
 
@@ -300,10 +331,10 @@ def get_nested_value(item, field):
     val = item
     for p in parts:
         if isinstance(val, dict):
-            val = val.get(p, 0)
+            val = val.get(p, None)
         else:
             return 0
-    return val
+    return val if val is not None else 0
 
 def main():
     import datetime
