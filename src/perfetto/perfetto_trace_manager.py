@@ -1,4 +1,5 @@
-import perfetto_trace_pb2 as pftrace
+# -*- coding: utf-8 -*-
+from src.perfetto import perfetto_trace_pb2 as pftrace
 import uuid
 import time
 from typing import Dict, Tuple, Optional, List
@@ -12,10 +13,10 @@ class PerfettoTraceManager:
         self.trace = pftrace.Trace()
         self.trusted_packet_sequence_id = uuid64() >> 32
         self.process_tracks: Dict[str, Tuple[pftrace.TracePacket, int, int]] = {}  # process_name -> (track, uuid, pid)
-        self.instant_tracks: Dict[str, Tuple[pftrace.TracePacket, int]] = {}  # process_name -> (track, uuid)
-        self.slice_tracks: Dict[str, Tuple[pftrace.TracePacket, int]] = {}  # process_name -> (track, uuid)
-        self.counter_tracks: Dict[str, Tuple[pftrace.TracePacket, int]] = {}  # process_name -> (track, uuid)
-        self.log_tracks: Dict[str, Tuple[pftrace.TracePacket, int]] = {}  # process_name -> (track, uuid)
+        self.instant_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
+        self.slice_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
+        self.counter_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
+        self.log_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
         self._auto_pid = 10000  # 起始自动分配pid
 
     def ensure_process_track(self, process_name: str, pid: Optional[int] = None) -> Tuple[int, int]:
@@ -34,18 +35,26 @@ class PerfettoTraceManager:
         return self.process_tracks[process_name][2], self.process_tracks[process_name][1]
 
     def ensure_track(self, process_name: str, track_type: str, track_name: str, pid: Optional[int] = None) -> int:
-        tracks_map = {
-            'instant': self.instant_tracks,
-            'slice': self.slice_tracks,
-            'counter': self.counter_tracks,
-            'log': self.log_tracks
-        }
-        if process_name not in tracks_map[track_type]:
+        if track_type == 'counter':
+            key = (process_name, track_name)
+            tracks_map = self.counter_tracks
+        elif track_type == 'instant':
+            key = (process_name, track_name)
+            tracks_map = self.instant_tracks
+        elif track_type == 'slice':
+            key = (process_name, track_name)
+            tracks_map = self.slice_tracks
+        elif track_type == 'log':
+            key = (process_name, track_name)
+            tracks_map = self.log_tracks
+        else:
+            raise ValueError(f"Unknown track_type: {track_type}")
+        if key not in tracks_map:
             _, process_uuid = self.ensure_process_track(process_name, pid=pid)
             track, uuid = create_track(process_uuid, track_name, track_type)
             self.trace.packet.append(track)
-            tracks_map[track_type][process_name] = (track, uuid)
-        return tracks_map[track_type][process_name][1]
+            tracks_map[key] = (track, uuid)
+        return tracks_map[key][1]
 
     def add_instant_event(self, process_name: str, track_name: str, event_name: str, timestamp: int, *, category: str = "default", pid: Optional[int] = None):
         track_uuid = self.ensure_track(process_name, 'instant', track_name, pid=pid)
@@ -127,6 +136,13 @@ class PerfettoTraceManager:
         with open(filename, "wb") as f:
             f.write(self.trace.SerializeToString())
 
+    def json2perfetto(self, json_data_list, track_dict):
+        processor = TrackProcessor(self)
+        for pname, track_list in track_dict.items():
+            for cfg in track_list:
+                track_config = TrackConfig(cfg)
+                processor.process(pname, json_data_list, track_config)
+
 def create_process_track(pid: int, process_name: str) -> Tuple[pftrace.TracePacket, int]:
     process_track = pftrace.TracePacket()
     process_track_uuid = uuid64()
@@ -173,7 +189,121 @@ def add_clock_snapshot(timestamp: int, trusted_packet_sequence_id: int) -> pftra
         clock.clock_id = i
         clock.timestamp = timestamp
         clock_packet.clock_snapshot.clocks.append(clock)
-    return clock_packet 
+    return clock_packet
+
+class TrackConfig:
+    def __init__(self, config: dict):
+        self.field = config["field"]
+        self.tname = config.get("tname", self.field)
+        self.track_type = config.get("type", "unknown")
+        self.ts_field = config.get("ts", "collect_time")
+        self.timezone = config.get("timezone", "+0800")
+        self.offset = config.get("offset", None)
+        self.category = config.get("category", "default")
+        self.duration_ms = config.get("duration_ms", None)
+
+class TrackProcessor:
+    def __init__(self, manager):
+        self.manager = manager
+
+    def process(self, pname, json_data_list, track_config: TrackConfig):
+        for item in json_data_list:
+            ts = parse_time_with_offset(item, track_config.ts_field, track_config.offset, track_config.timezone)
+            value = float(get_nested_value(item, track_config.field))
+            if track_config.track_type == "counter":
+                self.manager.add_counter_event(
+                    process_name=pname,
+                    track_name=track_config.tname,
+                    event_name=track_config.field,
+                    timestamp=ts,
+                    value=value,
+                    category=track_config.category
+                )
+            if track_config.track_type == "slice":
+                self.manager.add_slice_event(
+                    process_name=pname,
+                    track_name=track_config.tname,
+                    event_name=track_config.field,
+                    timestamp=ts,
+                    duration_ns=track_config.duration_ms * 1_000_000,
+                    category=track_config.category
+                )
+            # 可扩展更多类型
+
+def parse_time_with_offset(item, ts_field, offset=None, timezone="+0000"):
+    import datetime
+    ts_val = item.get(ts_field)
+    if ts_val is None:
+        return 0
+    # 1. 直接是 int/float 时间戳
+    if isinstance(ts_val, (int, float)):
+        # 判断单位：大于1e12视为纳秒，1e9~1e12视为微秒，1e6~1e9视为秒
+        if ts_val > 1e15:  # 假定为皮秒
+            ts = int(ts_val / 1_000)
+        elif ts_val > 1e12:  # 纳秒
+            ts = int(ts_val)
+        elif ts_val > 1e9:  # 微秒
+            ts = int(ts_val * 1_000)
+        elif ts_val > 1e6:  # 毫秒
+            ts = int(ts_val * 1_000_000)
+        else:  # 秒
+            ts = int(ts_val * 1_000_000_000)
+        # 处理 offset
+        if offset:
+            sign = -1 if offset.startswith("-") else 1
+            offset_val = offset[1:] if offset[0] in "+-" else offset
+            if offset_val.endswith("s"):
+                ts += sign * int(float(offset_val[:-1]) * 1_000_000_000)
+            elif offset_val.endswith("ms"):
+                ts += sign * int(float(offset_val[:-2]) * 1_000_000)
+        return ts
+    # 2. 字符串格式
+    ts_str = str(ts_val)
+    # 解析时区
+    if timezone.startswith("+") or timezone.startswith("-"):
+        sign = 1 if timezone[0] == "+" else -1
+        try:
+            hours = int(timezone[1:3])
+            mins = int(timezone[3:5])
+        except Exception:
+            hours = 0
+            mins = 0
+        tz_delta = datetime.timedelta(hours=sign * hours, minutes=sign * mins)
+        tzinfo = datetime.timezone(tz_delta)
+    else:
+        tzinfo = datetime.timezone.utc
+    # 支持多种字符串格式
+    dt = None
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.datetime.strptime(ts_str, fmt)
+            dt = dt.replace(tzinfo=tzinfo)
+            break
+        except Exception:
+            continue
+    if dt is None:
+        print(f"[WARN] Unrecognized timestamp format: {ts_str}")
+        return 0
+    ts = int(dt.timestamp() * 1_000_000_000)
+    # 处理 offset
+    if offset:
+        sign = -1 if offset.startswith("-") else 1
+        offset_val = offset[1:] if offset[0] in "+-" else offset
+        if offset_val.endswith("s"):
+            ts += sign * int(float(offset_val[:-1]) * 1_000_000_000)
+        elif offset_val.endswith("ms"):
+            ts += sign * int(float(offset_val[:-2]) * 1_000_000)
+    return ts
+
+def get_nested_value(item, field):
+    parts = field.split('.')
+    val = item
+    for p in parts:
+        if isinstance(val, dict):
+            val = val.get(p, 0)
+        else:
+            return 0
+    return val
 
 def main():
     import datetime
