@@ -3,12 +3,30 @@ description:
 globs: 
 alwaysApply: false
 ---
-# 项目结构说明
+# Trace Converter 项目结构与标准格式说明
 
-本项目主要用于将性能数据（如事件、计数器、日志等）合并为Perfetto格式的trace文件，便于性能分析。
+## 1. 主流程入口
+- [main.py](mdc:main.py) 是主入口，负责加载原始数据、调用适配层（adapters）、生成标准格式数据，并通过 PerfettoTraceManager 生成 trace 文件。
 
-- [perf_data_merge.py](mdc:perf_data_merge.py)：主脚本，负责读取JSON格式的性能数据，转换为Perfetto trace格式并输出。
-- [perfetto_trace_pb2.py](mdc:perfetto_trace_pb2.py)：由proto文件自动生成的Perfetto trace数据结构定义，供主脚本调用。
-- [perfetto_trace.proto](mdc:perfetto_trace.proto)：Perfetto trace的protobuf协议定义文件。
+## 2. 标准格式与适配层
+- 所有 trace 生成均基于"标准格式"数据，标准格式 schema 见 [configs/standard_trace_schema.json](mdc:configs/standard_trace_schema.json)。
+- 每种原始数据类型（如 cpu_short、cpu_long、gfx）有独立的适配层模板，位于 [adapters/](mdc:adapters) 目录，如 [cpu_short_adapter.py](mdc:adapters/cpu_short_adapter.py)。
+- 适配层负责将原始 JSON 数据转换为标准格式，主流程和 trace 生成代码只处理标准格式。
 
-主入口为[perf_data_merge.py](mdc:perf_data_merge.py)。
+## 3. PerfettoTraceManager 用法
+- [src/perfetto/perfetto_trace_manager.py](mdc:src/perfetto/perfetto_trace_manager.py) 是核心 trace 生成类。
+- 只需调用 `from_standard_format(data_list)` 方法，传入标准格式数据，即可自动生成 trace。
+- 该方法会对所有标准格式字段做严格校验，遇到不合法数据会详细警告并跳过，保证数据健壮性。
+
+## 4. 标准格式字段说明
+- event_type: 必须为 "counter"、"slice"、"instant"、"log" 之一
+- process_name, track_name: 必须为字符串
+- timestamp: 必须为毫秒（ms）数值，内部自动转为纳秒（ns）
+- value, duration_ns, message, extra 等字段类型见 schema
+
+## 5. 适配层开发规范
+- 新增数据类型时，只需在 adapters 目录下添加对应的适配层脚本，输出标准格式数据即可。
+- 主流程和 trace 生成代码无需修改。
+
+## 6. 其它
+- 项目所有配置、schema、适配层模板均集中管理，便于团队协作和自动化校验。

@@ -137,12 +137,84 @@ class PerfettoTraceManager:
         with open(filename, "wb") as f:
             f.write(self.trace.SerializeToString())
 
-    def json2perfetto(self, json_data_list, track_dict):
-        processor = TrackProcessor(self)
-        for pname, track_list in track_dict.items():
-            for cfg in track_list:
-                track_config = TrackConfig(cfg)
-                processor.process(pname, json_data_list, track_config)
+    def from_standard_format(self, data_list):
+        for idx, item in enumerate(data_list):
+            # 标准化校验
+            etype = item.get("event_type")
+            pname = item.get("process_name")
+            tname = item.get("track_name")
+            ts = item.get("timestamp")
+            # 必填字段校验
+            if etype not in ("counter", "slice", "instant", "log"):
+                print(f"[WARN] idx={idx} event_type非法: {etype}, 跳过该条")
+                continue
+            if not pname or not isinstance(pname, str):
+                print(f"[WARN] idx={idx} process_name非法: {pname}, 跳过该条")
+                continue
+            if not tname or not isinstance(tname, str):
+                print(f"[WARN] idx={idx} track_name非法: {tname}, 跳过该条")
+                continue
+            if ts is None or not isinstance(ts, (int, float)):
+                print(f"[WARN] idx={idx} timestamp非法: {ts}, 跳过该条")
+                continue
+            # 其它字段类型校验
+            category = item.get("category", "default")
+            pid = item.get("pid")
+            value = item.get("value", 0)
+            duration_ns = item.get("duration_ns", 0)
+            message = item.get("message", "")
+            extra = item.get("extra", None)
+            # 生成纳秒时间戳
+            timestamp_ns = int(float(ts) * 1_000_000)
+            if etype == "counter":
+                try:
+                    value_f = float(value)
+                except Exception:
+                    print(f"[WARN] idx={idx} value非法: {value}, 置为0")
+                    value_f = 0
+                self.add_counter_event(
+                    process_name=pname,
+                    track_name=tname,
+                    event_name=tname,
+                    timestamp=timestamp_ns,
+                    value=value_f,
+                    category=category,
+                    pid=pid
+                )
+            elif etype == "slice":
+                try:
+                    duration_ns_f = int(duration_ns)
+                except Exception:
+                    print(f"[WARN] idx={idx} duration_ns非法: {duration_ns}, 置为0")
+                    duration_ns_f = 0
+                self.add_slice_event(
+                    process_name=pname,
+                    track_name=tname,
+                    event_name=tname,
+                    timestamp=timestamp_ns,
+                    duration_ns=duration_ns_f,
+                    category=category,
+                    pid=pid
+                )
+            elif etype == "instant":
+                self.add_instant_event(
+                    process_name=pname,
+                    track_name=tname,
+                    event_name=tname,
+                    timestamp=timestamp_ns,
+                    category=category,
+                    pid=pid
+                )
+            elif etype == "log":
+                msg = str(message) if message is not None else ""
+                self.add_log_event(
+                    process_name=pname,
+                    track_name=tname,
+                    log_lines=[msg] if msg else [],
+                    category=category,
+                    pid=pid
+                )
+            # 可扩展更多类型
 
 def create_process_track(pid: int, process_name: str) -> Tuple[pftrace.TracePacket, int]:
     process_track = pftrace.TracePacket()
@@ -191,147 +263,3 @@ def add_clock_snapshot(timestamp: int, trusted_packet_sequence_id: int) -> pftra
         clock.timestamp = timestamp
         clock_packet.clock_snapshot.clocks.append(clock)
     return clock_packet
-
-class TrackConfig:
-    def __init__(self, config: dict):
-        self.field = config["field"]
-        self.tname = config.get("tname", self.field)
-        self.track_type = config.get("type", "unknown")
-        self.ts_field = config.get("ts", "collect_time")
-        self.timezone = config.get("timezone", "+0800")
-        self.offset = config.get("offset", None)
-        self.category = config.get("category", "default")
-        self.duration_ms = config.get("duration_ms", None)
-
-def parse_template_value(val, item):
-    import re
-    if isinstance(val, str):
-        pattern = re.compile(r"\$\(([^)]+)\)")
-        def replacer(match):
-            key = match.group(1)
-            v = get_nested_value(item, key)
-            if v is None:
-                print(f"[WARN] parse_template_value: {key} not found in item {item}")
-                return ""
-            return str(v)
-        return pattern.sub(replacer, val)
-    return val
-
-class TrackProcessor:
-    def __init__(self, manager):
-        self.manager = manager
-
-    def process(self, pname, json_data_list, track_config: TrackConfig):
-        for item in json_data_list:
-            # 动态解析所有配置字段
-            resolved = {}
-            for key in vars(track_config):
-                val = getattr(track_config, key)
-                resolved[key] = parse_template_value(val, item) if isinstance(val, str) else val
-
-            ts = parse_time_with_offset(item, resolved.get("ts_field", "collect_time"), resolved.get("offset"), resolved.get("timezone", "+0800"))
-            value = float(get_nested_value(item, resolved.get("field")))
-            duration_ms_val = resolved.get("duration_ms", None)
-            if duration_ms_val not in (None, ""):
-                try:
-                    duration_ms_val = float(duration_ms_val)
-                except Exception:
-                    print(f"[WARN] duration_ms_val '{duration_ms_val}' cannot be converted to float")
-                    duration_ms_val = 0
-            else:
-                duration_ms_val = 0
-
-            if resolved.get("track_type") == "counter":
-                self.manager.add_counter_event(
-                    process_name=pname,
-                    track_name=resolved.get("tname"),
-                    event_name=resolved.get("field"),
-                    timestamp=ts,
-                    value=value,
-                    category=resolved.get("category", "default")
-                )
-            if resolved.get("track_type") == "slice":
-                self.manager.add_slice_event(
-                    process_name=pname,
-                    track_name=resolved.get("tname"),
-                    event_name=resolved.get("field"),
-                    timestamp=ts,
-                    duration_ns=int(duration_ms_val) * 1_000_000 if duration_ms_val is not None else 0,
-                    category=resolved.get("category", "default")
-                )
-            # 可扩展更多类型
-
-def parse_time_with_offset(item, ts_field, offset=None, timezone="+0000"):
-    import datetime
-    ts_val = item.get(ts_field)
-    if ts_val is None:
-        return 0
-    # 1. 直接是 int/float 时间戳
-    if isinstance(ts_val, (int, float)):
-        # 判断单位：大于1e12视为纳秒，1e9~1e12视为微秒，1e6~1e9视为秒
-        if ts_val > 1e15:  # 假定为皮秒
-            ts = int(ts_val / 1_000)
-        elif ts_val > 1e12:  # 纳秒
-            ts = int(ts_val)
-        elif ts_val > 1e9:  # 微秒
-            ts = int(ts_val * 1_000)
-        elif ts_val > 1e6:  # 毫秒
-            ts = int(ts_val * 1_000_000)
-        else:  # 秒
-            ts = int(ts_val * 1_000_000_000)
-        # 处理 offset
-        if offset:
-            sign = -1 if offset.startswith("-") else 1
-            offset_val = offset[1:] if offset[0] in "+-" else offset
-            if offset_val.endswith("s"):
-                ts += sign * int(float(offset_val[:-1]) * 1_000_000_000)
-            elif offset_val.endswith("ms"):
-                ts += sign * int(float(offset_val[:-2]) * 1_000_000)
-        return ts
-    # 2. 字符串格式
-    ts_str = str(ts_val)
-    # 解析时区
-    if timezone.startswith("+") or timezone.startswith("-"):
-        sign = 1 if timezone[0] == "+" else -1
-        try:
-            hours = int(timezone[1:3])
-            mins = int(timezone[3:5])
-        except Exception:
-            hours = 0
-            mins = 0
-        tz_delta = datetime.timedelta(hours=sign * hours, minutes=sign * mins)
-        tzinfo = datetime.timezone(tz_delta)
-    else:
-        tzinfo = datetime.timezone.utc
-    # 支持多种字符串格式
-    dt = None
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-        try:
-            dt = datetime.datetime.strptime(ts_str, fmt)
-            dt = dt.replace(tzinfo=tzinfo)
-            break
-        except Exception:
-            continue
-    if dt is None:
-        print(f"[WARN] Unrecognized timestamp format: {ts_str}")
-        return 0
-    ts = int(dt.timestamp() * 1_000_000_000)
-    # 处理 offset
-    if offset:
-        sign = -1 if offset.startswith("-") else 1
-        offset_val = offset[1:] if offset[0] in "+-" else offset
-        if offset_val.endswith("s"):
-            ts += sign * int(float(offset_val[:-1]) * 1_000_000_000)
-        elif offset_val.endswith("ms"):
-            ts += sign * int(float(offset_val[:-2]) * 1_000_000)
-    return ts
-
-def get_nested_value(item, field):
-    parts = field.split('.')
-    val = item
-    for p in parts:
-        if isinstance(val, dict):
-            val = val.get(p, None)
-        else:
-            return 0
-    return val if val is not None else 0

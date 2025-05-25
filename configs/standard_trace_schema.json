@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Standard Trace Event Format",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "event_type": {"type": "string", "enum": ["counter", "slice", "instant", "log"]},
+      "process_name": {"type": "string"},
+      "pid": {"type": ["integer", "string"], "description": "Process ID, optional"},
+      "thread_name": {"type": "string"},
+      "tid": {"type": ["integer", "string"]},
+      "track_name": {"type": "string"},
+      "category": {"type": "string"},
+      "timestamp": {"type": "number", "description": "毫秒时间戳 (ms)"},
+      "value": {"type": ["number", "null"]},
+      "duration_ns": {"type": ["integer", "null"]},
+      "message": {"type": "string"},
+      "extra": {"type": "object"}
+    },
+    "required": ["event_type", "process_name", "track_name", "timestamp"],
+    "additionalProperties": true
+  }
+} 
