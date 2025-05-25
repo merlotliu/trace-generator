@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from src.perfetto import perfetto_trace_pb2 as pftrace
+from trace_converter.perfetto import perfetto_trace_pb2 as pftrace
 import uuid
 import time
 from typing import Dict, Tuple, Optional, List

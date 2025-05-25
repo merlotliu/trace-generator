@@ -12,7 +12,7 @@ def fetch_data(vin, start_time, end_time, data_type):
     返回：
         data: list，原始数据列表
     """
-    url = 'https://crs-data-service.prod.k8s.lixiang.com/common/req'
+    url = 'https://crs-data-service.dev.k8s.lixiang.com/common/req'
     payload = {
         "identify": f"sci_vin_detail_data_out",
         "param": {

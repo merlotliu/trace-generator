@@ -1,9 +1,8 @@
 import os
 from datetime import datetime
-import click
-from src.perfetto.perfetto_trace_manager import PerfettoTraceManager
-from adapters.cpu_short_adapter import cpu_short_to_standard
-from data_fetcher import fetch_data
+from .adapters.cpu_short_adapter import cpu_short_to_standard
+from .data_fetcher import fetch_data
+from .perfetto.perfetto_trace_manager import PerfettoTraceManager
 
 # 适配器映射表，后续可扩展其它类型
 ADAPTER_MAP = {
@@ -39,16 +38,4 @@ def run_trace_convert(vin, start_time, end_time, types):
         manager.save_to_file(out_name)
         print(f"已生成 {out_name}，可用 Perfetto UI 打开查看。\n")
         results.append(out_name)
-    return results
-
-@click.command()
-@click.option('-v', '--vin', default='HLX33B121R1647380', help='车辆VIN码')
-@click.option('-s', '--start-time', default='2025-02-06 21:40:14', help='开始时间，格式YYYY-MM-DD HH:MM:SS')
-@click.option('-e', '--end-time', default='2025-02-06 22:10:14', help='结束时间，格式YYYY-MM-DD HH:MM:SS')
-@click.option('-t', '--type', 'types', multiple=True, default=['short'], help='数据类型，可多次指定，如 -t short -t gfx')
-def cli(vin, start_time, end_time, types):
-    """命令行入口"""
-    run_trace_convert(vin, start_time, end_time, types)
-
-if __name__ == "__main__":
-    cli()
+    return results 
