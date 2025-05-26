@@ -10,20 +10,23 @@
 
 ```
 trace-converter/
-├── main.py                        # 主流程入口，支持一键数据获取/转换/trace生成
-├── adapters/                      # 各类原始数据到标准格式的适配层
-│   ├── cpu_short_adapter.py       # CPU短周期数据适配层
-│   ├── cpu_long_adapter.py        # CPU长周期数据适配层（可扩展）
-│   └── gfx_adapter.py             # GFX数据适配层（可扩展）
+├── trace_converter/                # 主包目录，所有核心代码和API
+│   ├── __init__.py
+│   ├── api.py                      # 主要API和实现逻辑（run_trace_convert等）
+│   ├── data_fetcher.py             # 数据获取
+│   ├── adapters/
+│   │   ├── __init__.py
+│   │   ├── cpu_short_adapter.py
+│   │   └── gfx_adapter.py          # GFX数据适配器
+│   ├── perfetto/
+│   │   ├── __init__.py
+│   │   └── perfetto_trace_manager.py
+├── cli.py                          # 命令行入口，只负责参数解析和调用API
 ├── configs/
-│   └── standard_trace_schema.json # 标准格式schema
-├── src/
-│   └── perfetto/
-│       └── perfetto_trace_manager.py # 核心trace生成类，只处理标准格式
-├── data_fetcher.py                # 数据获取模块，自动拉取原始数据
-├── requirements.txt               # 依赖说明
-├── README.md                      # 项目说明文档
-└── ...                            # 其它文件
+│   └── standard_trace_schema.json
+├── requirements.txt
+├── README.md
+└── ...  # 其它文件
 ```
 
 ---
@@ -41,7 +44,7 @@ pip install -r requirements.txt
 支持通过 VIN、时间区间、数据类型一键获取数据并生成 trace 文件。
 
 ```bash
-python main.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short
+python cli.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short -t gfx
 ```
 
 - `-v/--vin`：车辆VIN码
@@ -60,13 +63,54 @@ python main.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:1
 可在 Python 代码中直接调用主流程：
 
 ```python
-from main import run_trace_convert
+from trace_converter.api import run_trace_convert
 run_trace_convert(
     vin="HLX33B121R1647380",
     start_time="2025-02-06 21:40:14",
     end_time="2025-02-06 22:10:14",
-    types=["short"]
+    types=["short", "gfx"]
 )
+```
+
+---
+
+## GFX 适配器说明
+
+### 输入数据要求
+- 输入为包含多个字典的列表，每个字典需包含如下字段：
+  - `jank_event`、`total_duration`、`create_time`、`window_name` 及其它性能细节字段
+
+### 处理逻辑
+1. 按 `jank_event` 分组，遍历每组。
+2. 每条数据生成一个 `slice` 事件：
+   - `process_name`：统一为 `gfx_200ms`
+   - `track_name`：为该条的 `jank_event`
+   - `event_name`/`name`：为该条的 `window_name`
+   - `timestamp`：`create_time`（转为毫秒时间戳）减去 `total_duration`（单位毫秒）
+   - `duration_ns`：`total_duration` * 1_000_000
+   - `category`：`gfx`
+   - `arguments`：包含以下字段（会自动映射到 Perfetto UI 的 Arguments 面板）：
+     - `mark_animation_time`, `ui_draw_time`, `sync_time`, `handle_input_time`,
+       `draw_command_time`, `perform_traversals_time`, `current_frame_index`,
+       `gpu_slow`, `ui_thread_dely`, `swap_buffers_and_gpu_draw_time`
+
+### 示例标准格式输出
+```json
+{
+  "event_type": "slice",
+  "process_name": "gfx_200ms",
+  "track_name": "FirstFrame",
+  "timestamp": 1738850126257,
+  "duration_ns": 269000000,
+  "event_name": "com.liauto.onemap.mapeidcard.MapEidCardActivity",
+  "category": "gfx",
+  "arguments": {
+    "mark_animation_time": 0,
+    "ui_draw_time": 3,
+    ...
+  },
+  "name": "com.liauto.onemap.mapeidcard.MapEidCardActivity"
+}
 ```
 
 ---
@@ -74,11 +118,11 @@ run_trace_convert(
 ## 工作流程（原理说明）
 
 1. **数据获取**  
-   通过 HTTP POST 请求自动拉取原始性能数据（如 CPU 短周期等），无需手动下载。
+   通过 HTTP POST 请求自动拉取原始性能数据（如 CPU/GFX 等），无需手动下载。
 2. **适配层转换**  
-   每种原始格式有独立的适配层（如 adapters/cpu_short_adapter.py），负责将原始数据转换为标准格式列表。
+   每种原始格式有独立的适配层（如 adapters/cpu_short_adapter.py、adapters/gfx_adapter.py），负责将原始数据转换为标准格式列表。
 3. **主流程处理**  
-   main.py 负责自动获取数据、调用适配层转换为标准格式，然后调用 PerfettoTraceManager 生成 trace 文件。
+   cli.py/api.py 负责自动获取数据、调用适配层转换为标准格式，然后调用 PerfettoTraceManager 生成 trace 文件。
 4. **trace 生成**  
    PerfettoTraceManager.from_standard_format(data_list) 负责对标准格式数据做严格校验，并生成最终的 trace 文件。
 5. **可视化分析**  
@@ -91,7 +135,8 @@ run_trace_convert(
 - event_type: 必须为 "counter"、"slice"、"instant"、"log" 之一
 - process_name, track_name: 必须为字符串
 - timestamp: 必须为毫秒（ms）数值，内部自动转为纳秒
-- value, duration_ns, message, extra 等字段类型见 [configs/standard_trace_schema.json](configs/standard_trace_schema.json)
+- value, duration_ns, message, arguments 等字段类型见 [configs/standard_trace_schema.json](configs/standard_trace_schema.json)
+- arguments 字段会自动映射到 Perfetto UI 的 Arguments 面板
 
 ---
 
@@ -100,74 +145,6 @@ run_trace_convert(
 - 每种原始数据类型都应有独立的适配层脚本，输出标准格式数据。
 - 适配层只负责"原始数据 → 标准格式"，主流程和 trace 生成代码无需修改。
 - 支持 offset、时区等灵活配置，推荐用字符串表达式（如 '+08h'、'-30s'）。
-
-**示例：adapters/cpu_short_adapter.py**
-```python
-import datetime
-import re
-
-def safe_float(val, default=0.0):
-    try:
-        return float(val)
-    except Exception:
-        return default
-
-def parse_offset_str(offset_str):
-    if not offset_str:
-        return 0
-    sign = 1
-    s = offset_str.strip()
-    if s.startswith('-'):
-        sign = -1
-        s = s[1:]
-    elif s.startswith('+'):
-        s = s[1:]
-    total_sec = 0
-    for part, mult in re.findall(r'(\d+)([hms])', s):
-        if mult == 'h':
-            total_sec += int(part) * 3600
-        elif mult == 'm':
-            total_sec += int(part) * 60
-        elif mult == 's':
-            total_sec += int(part)
-    return sign * total_sec
-
-def parse_collect_time_to_ms(val, offset_sec_str=None, tz_offset_sec_str=None):
-    ts = 0
-    if isinstance(val, (int, float)):
-        ts = int(val)
-    elif isinstance(val, str):
-        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-            try:
-                dt = datetime.datetime.strptime(val, fmt)
-                ts = int(dt.timestamp() * 1000)
-                break
-            except Exception:
-                continue
-    tz_offset = parse_offset_str(tz_offset_sec_str) if tz_offset_sec_str else 0
-    offset = parse_offset_str(offset_sec_str) if offset_sec_str else 0
-    ts += tz_offset * 1000
-    ts -= offset * 1000
-    return ts
-
-def build_counter_event(item, field, offset_sec_str=None, tz_offset_sec_str=None):
-    return {
-        "event_type": "counter",
-        "process_name": "cpu_short_30s",
-        "track_name": field,
-        "timestamp": parse_collect_time_to_ms(item.get("collect_time"), offset_sec_str=offset_sec_str, tz_offset_sec_str=tz_offset_sec_str),
-        "value": safe_float(item.get(field, 0)),
-        "category": "cpu_short"
-    }
-
-def cpu_short_to_standard(json_data):
-    fields = ["soft_irq", "total", "kernel", "irq", "nice", "user"]
-    standard_list = []
-    for item in json_data:
-        for field in fields:
-            standard_list.append(build_counter_event(item, field, offset_sec_str='30s', tz_offset_sec_str='+08h'))
-    return standard_list
-```
 
 ---
 

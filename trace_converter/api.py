@@ -1,12 +1,13 @@
 import os
 from .adapters.cpu_short_adapter import cpu_short_to_standard
+from .adapters.gfx_adapter import gfx_to_standard
 from .data_fetcher import fetch_data
 from .perfetto.perfetto_trace_manager import PerfettoTraceManager
 
 # 适配器映射表，后续可扩展其它类型
 ADAPTER_MAP = {
     'short': cpu_short_to_standard,
-    # 'gfx': gfx_to_standard, # 预留
+    'gfx': gfx_to_standard,
 }
 
 def run_trace_convert(vin, start_time, end_time, types):
@@ -27,9 +28,7 @@ def run_trace_convert(vin, start_time, end_time, types):
         print(f"原始数据条数: {len(raw_data)}")
         standard_data = ADAPTER_MAP[data_type](raw_data)
         print(f"标准格式数据条数: {len(standard_data)}")
-        
         manager.from_standard_format(standard_data)
-    
     manager.add_clock_snapshot()
     # 输出文件名: VIN_开始时间_结束时间_trace.perfetto
     start_str = start_time.replace(':', '-').replace(' ', '-')

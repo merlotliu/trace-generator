@@ -61,9 +61,11 @@ def build_counter_event(item, field, offset_sec_str=None, tz_offset_sec_str=None
         "event_type": "counter",
         "process_name": "cpu_short_30s",
         "track_name": field,
+        "event_name": field,
         "timestamp": parse_collect_time_to_ms(item.get("collect_time"), offset_sec_str=offset_sec_str, tz_offset_sec_str=tz_offset_sec_str),
         "value": safe_float(item.get(field, 0)),
-        "category": "cpu_short"
+        "category": "cpu_short",
+        "arguments": {}  # 预留，便于后续扩展
     }
 
 def cpu_short_to_standard(json_data):

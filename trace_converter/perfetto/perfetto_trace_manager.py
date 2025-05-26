@@ -57,14 +57,41 @@ class PerfettoTraceManager:
             tracks_map[key] = (track, uuid)
         return tracks_map[key][1]
 
-    def add_instant_event(self, process_name: str, track_name: str, event_name: str, timestamp: int, *, category: str = "default", pid: Optional[int] = None):
+    def add_instant_event(self, 
+        process_name: str, 
+        track_name: str, 
+        event_name: str, 
+        timestamp: int, 
+        category: str = "default", 
+        pid: Optional[int] = None, 
+        arguments: Optional[Dict[str, str]] = None):
         track_uuid = self.ensure_track(process_name, 'instant', track_name, pid=pid)
         packet = add_event(timestamp, track_uuid, event_name, category, self.trusted_packet_sequence_id, 'instant')
+        # 支持Arguments（debug_annotations）
+        if arguments:
+            for k, v in arguments.items():
+                ann = packet.track_event.debug_annotations.add()
+                ann.name = str(k)
+                ann.string_value = str(v)
         self.trace.packet.append(packet)
 
-    def add_slice_event(self, process_name: str, track_name: str, event_name: str, timestamp: int, duration_ns: int, *, category: str = "default", pid: Optional[int] = None):
+    def add_slice_event(self, 
+        process_name: str, 
+        track_name: str,
+        event_name: str,
+        timestamp: int,
+        duration_ns: int,
+        category: str = "default",
+        pid: Optional[int] = None,
+        arguments: Optional[Dict[str, str]] = None):
         track_uuid = self.ensure_track(process_name, 'slice', track_name, pid=pid)
         start_packet = add_event(timestamp, track_uuid, event_name, category, self.trusted_packet_sequence_id, 'slice', duration_ns)
+        # 支持Arguments（debug_annotations）
+        if arguments:
+            for k, v in arguments.items():
+                ann = start_packet.track_event.debug_annotations.add()
+                ann.name = str(k)
+                ann.string_value = str(v)
         self.trace.packet.append(start_packet)
         end_packet = pftrace.TracePacket()
         end_packet.timestamp = timestamp + duration_ns
@@ -143,6 +170,7 @@ class PerfettoTraceManager:
             etype = item.get("event_type")
             pname = item.get("process_name")
             tname = item.get("track_name")
+            ename = item.get("event_name")
             ts = item.get("timestamp")
             # 必填字段校验
             if etype not in ("counter", "slice", "instant", "log"):
@@ -163,7 +191,7 @@ class PerfettoTraceManager:
             value = item.get("value", 0)
             duration_ns = item.get("duration_ns", 0)
             message = item.get("message", "")
-            extra = item.get("extra", None)
+            arguments = item.get("arguments", None)
             # 生成纳秒时间戳
             timestamp_ns = int(float(ts) * 1_000_000)
             if etype == "counter":
@@ -175,7 +203,7 @@ class PerfettoTraceManager:
                 self.add_counter_event(
                     process_name=pname,
                     track_name=tname,
-                    event_name=tname,
+                    event_name=ename,
                     timestamp=timestamp_ns,
                     value=value_f,
                     category=category,
@@ -190,20 +218,22 @@ class PerfettoTraceManager:
                 self.add_slice_event(
                     process_name=pname,
                     track_name=tname,
-                    event_name=tname,
+                    event_name=ename,
                     timestamp=timestamp_ns,
                     duration_ns=duration_ns_f,
                     category=category,
-                    pid=pid
+                    pid=pid,
+                    arguments=arguments
                 )
             elif etype == "instant":
                 self.add_instant_event(
                     process_name=pname,
                     track_name=tname,
-                    event_name=tname,
+                    event_name=ename,
                     timestamp=timestamp_ns,
                     category=category,
-                    pid=pid
+                    pid=pid,
+                    arguments=arguments
                 )
             elif etype == "log":
                 msg = str(message) if message is not None else ""
