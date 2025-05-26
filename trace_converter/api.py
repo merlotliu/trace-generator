@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from .adapters.cpu_short_adapter import cpu_short_to_standard
 from .adapters.gfx_adapter import gfx_to_standard
+from .adapters.cpu_long_adapter import cpu_long_to_standard
 from .data_fetcher import fetch_data
 from .perfetto.perfetto_trace_manager import PerfettoTraceManager
 
@@ -8,6 +9,7 @@ from .perfetto.perfetto_trace_manager import PerfettoTraceManager
 ADAPTER_MAP = {
     'short': cpu_short_to_standard,
     'gfx': gfx_to_standard,
+    'long': cpu_long_to_standard,
 }
 
 def run_trace_convert(vin, start_time, end_time, types, timezone):

@@ -4,7 +4,7 @@ from trace_converter.api import run_trace_convert
 DEFAULT_VIN = 'HLX33B126P1158745'
 DEFAULT_START_TIME = '2025-05-22 00:00:00'
 DEFAULT_END_TIME = '2025-05-22 23:59:59'
-DEFAULT_TYPES = ['short', 'gfx']
+DEFAULT_TYPES = ['gfx', 'short', 'long']
 DEFAULT_TIMEZONE = '+0800'
 
 @click.command()
