@@ -44,13 +44,14 @@ pip install -r requirements.txt
 支持通过 VIN、时间区间、数据类型一键获取数据并生成 trace 文件。
 
 ```bash
-python cli.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short -t gfx
+python cli.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short -t gfx --timezone +0800
 ```
 
 - `-v/--vin`：车辆VIN码
 - `-s/--start-time`：开始时间（格式 `YYYY-MM-DD HH:MM:SS`）
 - `-e/--end-time`：结束时间（格式 `YYYY-MM-DD HH:MM:SS`）
 - `-t/--type`：数据类型，可多次指定，如 `-t short -t gfx`
+- `--timezone`：时区，格式如 `+0800` 或 `-0600`，**所有trace事件的时间戳会自动统一为UTC**
 
 **输出文件名格式**：
 ```
@@ -68,7 +69,8 @@ run_trace_convert(
     vin="HLX33B121R1647380",
     start_time="2025-02-06 21:40:14",
     end_time="2025-02-06 22:10:14",
-    types=["short", "gfx"]
+    types=["short", "gfx"],
+    timezone='+0800'  # 统一时区，所有trace事件自动转为UTC
 )
 ```
 
@@ -124,7 +126,7 @@ run_trace_convert(
 3. **主流程处理**  
    cli.py/api.py 负责自动获取数据、调用适配层转换为标准格式，然后调用 PerfettoTraceManager 生成 trace 文件。
 4. **trace 生成**  
-   PerfettoTraceManager.from_standard_format(data_list) 负责对标准格式数据做严格校验，并生成最终的 trace 文件。
+   PerfettoTraceManager.from_standard_format(data_list) 负责对标准格式数据做严格校验，并生成最终的 trace 文件。**所有事件的时间戳会根据 timezone 参数自动转为UTC**。
 5. **可视化分析**  
    生成的 .perfetto 文件可直接用 Perfetto UI 打开分析。
 
@@ -134,7 +136,7 @@ run_trace_convert(
 
 - event_type: 必须为 "counter"、"slice"、"instant"、"log" 之一
 - process_name, track_name: 必须为字符串
-- timestamp: 必须为毫秒（ms）数值，内部自动转为纳秒
+- timestamp: 必须为毫秒（ms）数值，**为本地时区时间，最终会自动转为UTC**
 - value, duration_ns, message, arguments 等字段类型见 [configs/standard_trace_schema.json](configs/standard_trace_schema.json)
 - arguments 字段会自动映射到 Perfetto UI 的 Arguments 面板
 

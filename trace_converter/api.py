@@ -1,4 +1,4 @@
-import os
+# -*- coding: utf-8 -*-
 from .adapters.cpu_short_adapter import cpu_short_to_standard
 from .adapters.gfx_adapter import gfx_to_standard
 from .data_fetcher import fetch_data
@@ -10,15 +10,16 @@ ADAPTER_MAP = {
     'gfx': gfx_to_standard,
 }
 
-def run_trace_convert(vin, start_time, end_time, types):
+def run_trace_convert(vin, start_time, end_time, types, timezone):
     """
     主流程API，可直接调用。
     vin: 车辆VIN
     start_time: 开始时间 'YYYY-MM-DD HH:MM:SS'
     end_time: 结束时间 'YYYY-MM-DD HH:MM:SS'
     types: list[str]，如['short', 'gfx']
+    timezone: 时区字符串，如'+0800'，影响所有trace事件的时间戳
     """
-    manager = PerfettoTraceManager()
+    manager = PerfettoTraceManager(timezone=timezone)
     for data_type in types:
         if data_type not in ADAPTER_MAP:
             print(f"暂不支持的数据类型: {data_type}")

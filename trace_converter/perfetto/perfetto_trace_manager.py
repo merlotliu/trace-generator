@@ -10,7 +10,7 @@ def uuid64():
     return uuid.uuid4().int >> 64
 
 class PerfettoTraceManager:
-    def __init__(self):
+    def __init__(self, timezone='+0800'):
         self.trace = pftrace.Trace()
         self.trusted_packet_sequence_id = uuid64() >> 32
         self.process_tracks: Dict[str, Tuple[pftrace.TracePacket, int, int]] = {}  # process_name -> (track, uuid, pid)
@@ -19,6 +19,28 @@ class PerfettoTraceManager:
         self.counter_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
         self.log_tracks: Dict[Tuple[str, str], Tuple[pftrace.TracePacket, int]] = {}
         self._auto_pid = 10000  # 起始自动分配pid
+        self.timezone = timezone
+
+    def _parse_timezone_offset(self, tz_str):
+        """
+        解析+0800/-0600为秒数
+        """
+        if not tz_str or len(tz_str) != 5:
+            return 0
+        sign = 1 if tz_str[0] == '+' else -1
+        try:
+            hours = int(tz_str[1:3])
+            mins = int(tz_str[3:5])
+            return sign * (hours * 3600 + mins * 60)
+        except Exception:
+            return 0
+
+    def _to_utc_ms(self, ts):
+        """
+        将本地毫秒时间戳转为UTC毫秒
+        """
+        offset = self._parse_timezone_offset(self.timezone)
+        return int(ts) - offset * 1000
 
     def ensure_process_track(self, process_name: str, pid: Optional[int] = None) -> Tuple[int, int]:
         if process_name not in self.process_tracks:
@@ -192,8 +214,9 @@ class PerfettoTraceManager:
             duration_ns = item.get("duration_ns", 0)
             message = item.get("message", "")
             arguments = item.get("arguments", None)
-            # 生成纳秒时间戳
-            timestamp_ns = int(float(ts) * 1_000_000)
+            # 统一时区处理
+            timestamp_utc_ms = self._to_utc_ms(ts)
+            timestamp_ns = int(float(timestamp_utc_ms) * 1_000_000)
             if etype == "counter":
                 try:
                     value_f = float(value)
