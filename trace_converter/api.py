@@ -22,19 +22,22 @@ def run_trace_convert(vin, start_time, end_time, types, timezone):
     manager = PerfettoTraceManager(timezone=timezone)
     for data_type in types:
         if data_type not in ADAPTER_MAP:
-            print(f"暂不支持的数据类型: {data_type}")
+            print(f"❌ 暂不支持的数据类型: {data_type}")
             continue
-        print(f"正在获取 {data_type} 数据...")
-        raw_data = fetch_data(vin, start_time, end_time, data_type)
-        print(f"原始数据条数: {len(raw_data)}")
-        standard_data = ADAPTER_MAP[data_type](raw_data)
-        print(f"标准格式数据条数: {len(standard_data)}")
-        manager.from_standard_format(standard_data)
+        print(f"🚀 >>>>> 开始处理 「{data_type}」 数据 >>>>>")
+        try:
+            raw_data = fetch_data(vin, start_time, end_time, data_type)
+            standard_data = ADAPTER_MAP[data_type](raw_data)
+            manager.from_standard_format(standard_data)
+            print(f"✅ <<<<< {data_type} 数据处理完成，共 {len(standard_data)} 条标准事件。 <<<<<")
+        except Exception as e:
+            print(f"❌ <<<<< {data_type} 数据处理失败，已跳过。原因: {e} <<<<<")
+            continue
     manager.add_clock_snapshot()
     # 输出文件名: VIN_开始时间_结束时间_trace.perfetto
     start_str = start_time.replace(':', '-').replace(' ', '-')
     end_str = end_time.replace(':', '-').replace(' ', '-')
     out_name = f"{vin}_{start_str}_{end_str}_trace.perfetto"
     manager.save_to_file(out_name)
-    print(f"已生成 {out_name}，可用 Perfetto UI 打开查看。\n")
+    print(f"🎉 已生成 {out_name}，可用 Perfetto UI 打开查看。")
     return out_name 
