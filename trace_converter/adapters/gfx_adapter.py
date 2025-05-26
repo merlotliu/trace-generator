@@ -1,19 +1,6 @@
-import datetime
+# -*- coding: utf-8 -*-
 from collections import defaultdict
-
-def parse_time_to_ms(time_str):
-    """
-    将'YYYY-MM-DD HH:MM:SS'字符串转为毫秒时间戳。
-    """
-    if not time_str:
-        return 0
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-        try:
-            dt = datetime.datetime.strptime(time_str, fmt)
-            return int(dt.timestamp() * 1000)
-        except Exception:
-            continue
-    return 0
+from trace_converter.utils import parse_datetime_to_ms
 
 def gfx_to_standard(json_data):
     """
@@ -41,9 +28,8 @@ def gfx_to_standard(json_data):
     for jank_event, items in groups.items():
         for item in items:
             window_name = item.get('window_name', '')
-            # 解析create_time为毫秒时间戳
-            create_time_str = item.get('create_time', '')
-            create_time_ms = parse_time_to_ms(create_time_str)
+            # 统一用工具函数转毫秒时间戳
+            create_time_ms = parse_datetime_to_ms(item.get('create_time', ''))
             total_duration = int(item.get('total_duration', 0))
             # slice开始时间 = create_time_ms - total_duration
             timestamp = create_time_ms - total_duration
