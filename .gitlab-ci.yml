@@ -1,0 +1,196 @@
+stages:
+  - build
+  - test
+  - package
+  - publish
+
+variables:
+  PACKAGE_VERSION: "1.0.0"
+  DEBIAN_FRONTEND: noninteractive
+
+# ==================== 构建阶段 ====================
+
+build-python:
+  stage: build
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y git
+    - pip install build pytest
+  script:
+    - python -m build
+    - pip install dist/*.whl
+    - tracegen --help
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  except:
+    - tags
+
+# ==================== 测试阶段 ====================
+
+test-functionality:
+  stage: test
+  image: python:3.11-slim
+  dependencies:
+    - build-python
+  script:
+    - pip install dist/*.whl
+    - python -c "import tracegen; print('✅ Python 模块导入成功')"
+    - tracegen --help | grep "标准格式 Trace 生成工具"
+    - echo "✅ 功能测试通过"
+  except:
+    - tags
+
+# ==================== 打包阶段 ====================
+
+package-homebrew:
+  stage: package
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache git bash coreutils
+  script:
+    # 创建 GitHub tarball
+    - git archive --format=tar.gz --prefix=tracegen-v${PACKAGE_VERSION}/ HEAD > tracegen-v${PACKAGE_VERSION}.tar.gz
+    
+    # 计算 SHA256
+    - SHA256=$(sha256sum tracegen-v${PACKAGE_VERSION}.tar.gz | cut -d' ' -f1)
+    - echo "计算的 SHA256: $SHA256"
+    - echo "SHA256=$SHA256" > homebrew.env
+    
+    # 更新 Formula 中的 SHA256
+    - sed -i "s/SHA256_FROM_GITLAB_RELEASE/$SHA256/g" Formula/tracegen.rb
+    
+    # 验证 Formula
+    - echo "=== 更新后的 Formula ==="
+    - cat Formula/tracegen.rb
+  artifacts:
+    paths:
+      - tracegen-v${PACKAGE_VERSION}.tar.gz
+      - Formula/tracegen.rb
+    reports:
+      dotenv: homebrew.env
+    expire_in: 1 week
+  only:
+    - tags
+
+package-apt:
+  stage: package
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update
+    - apt-get install -y debhelper devscripts build-essential python3-dev 
+    - apt-get install -y rustc cargo cmake pkg-config
+    - apt-get install -y python3-setuptools python3-pip dh-python
+  script:
+    # 准备构建环境
+    - export DEBEMAIL="liumoulu@lixiang.com"
+    - export DEBFULLNAME="刘某某"
+    
+    # 构建 deb 包
+    - echo "=== 开始构建 APT 包 ==="
+    - debuild -us -uc -b
+    
+    # 移动生成的包
+    - mv ../tracegen_${PACKAGE_VERSION}*.deb .
+    - ls -la *.deb
+    
+    # 验证包信息
+    - dpkg-deb --info tracegen_${PACKAGE_VERSION}*.deb
+    - dpkg-deb --contents tracegen_${PACKAGE_VERSION}*.deb
+  artifacts:
+    paths:
+      - "*.deb"
+    expire_in: 1 week
+  only:
+    - tags
+
+# ==================== 发布阶段 ====================
+
+publish-homebrew:
+  stage: publish
+  image: alpine:latest
+  dependencies:
+    - package-homebrew
+  before_script:
+    - apk add --no-cache git openssh-client
+    # 配置 Git（假设有部署密钥）
+    - mkdir -p ~/.ssh
+    - echo "$HOMEBREW_DEPLOY_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan gitlab.lixiang.com >> ~/.ssh/known_hosts
+    - git config --global user.email "ci@lixiang.com"
+    - git config --global user.name "CI Bot"
+  script:
+    # 克隆 Homebrew Tap 仓库
+    - git clone git@gitlab.lixiang.com:homebrew/tap.git homebrew-tap
+    
+    # 更新 Formula
+    - cp Formula/tracegen.rb homebrew-tap/Formula/
+    
+    # 提交并推送
+    - cd homebrew-tap
+    - git add Formula/tracegen.rb
+    - git commit -m "🚀 Update tracegen to v${PACKAGE_VERSION}"
+    - git push origin main
+    
+    - echo "✅ Homebrew Formula 发布成功"
+    - echo "用户可以通过以下命令安装："
+    - echo "brew tap lixiang/tools git@gitlab.lixiang.com:homebrew/tap.git"
+    - echo "brew install tracegen"
+  only:
+    - tags
+  when: manual  # 需要手动触发
+
+publish-apt:
+  stage: publish
+  image: ubuntu:22.04
+  dependencies:
+    - package-apt
+  before_script:
+    - apt-get update && apt-get install -y curl
+  script:
+    # 上传到内部 APT 仓库（需要配置相应的上传接口）
+    - echo "=== 发布 APT 包 ==="
+    - DEB_FILE=$(ls tracegen_${PACKAGE_VERSION}*.deb)
+    - echo "准备上传: $DEB_FILE"
+    
+    # 示例：通过 HTTP API 上传到内部 APT 仓库
+    # - curl -F "file=@$DEB_FILE" -H "Authorization: Bearer $APT_REPO_TOKEN" https://apt.lixiang.com/upload
+    
+    # 或者通过 SCP 上传到服务器
+    # - scp $DEB_FILE deploy@apt-server:/var/www/apt/incoming/
+    
+    - echo "✅ APT 包发布成功"
+    - echo "用户可以通过以下命令安装："
+    - echo "echo 'deb https://apt.lixiang.com/ubuntu jammy main' | sudo tee /etc/apt/sources.list.d/lixiang.list"
+    - echo "sudo apt update && sudo apt install tracegen"
+  only:
+    - tags
+  when: manual  # 需要手动触发
+
+# ==================== 发布版本信息 ====================
+
+release-notes:
+  stage: publish
+  image: alpine:latest
+  dependencies:
+    - package-homebrew
+    - package-apt
+  script:
+    - echo "=== Tracegen v${PACKAGE_VERSION} 发布成功 ==="
+    - echo ""
+    - echo "📦 可用安装方式："
+    - echo ""
+    - echo "🍺 macOS (Homebrew):"
+    - echo "  brew tap lixiang/tools git@gitlab.lixiang.com:homebrew/tap.git"
+    - echo "  brew install tracegen"
+    - echo ""
+    - echo "🐧 Ubuntu/WSL (APT):"
+    - echo "  echo 'deb https://apt.lixiang.com/ubuntu jammy main' | sudo tee /etc/apt/sources.list.d/lixiang.list"
+    - echo "  sudo apt update && sudo apt install tracegen"
+    - echo ""
+    - echo "📋 使用示例："
+    - echo "  tracegen -v HLX33B121R1647380 -s '2025-02-06 21:40:14' -e '2025-02-06 22:10:14' -t short -t gfx"
+  only:
+    - tags 

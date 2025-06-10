@@ -23,4 +23,38 @@ env/
 *.sqlite3
 *.db
 # Perfetto trace 文件
-*.perfetto 
+*.perfetto
+
+# Debian 包构建文件
+debian/files
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/tracegen/
+debian/tracegen.debhelper.log
+debian/tracegen.substvars
+debian/tmp/
+*.deb
+*.ddeb
+*.dsc
+*.changes
+*.buildinfo
+
+# Homebrew 构建文件
+*.tar.gz
+Formula/*.tar.gz
+
+# Rust 构建文件（如果有 rust-components）
+target/
+Cargo.lock
+
+# C++ 构建文件（如果有 cpp-components）
+*.o
+*.a
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# GitLab CI artifacts
+homebrew.env 

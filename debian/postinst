@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -e
+
+# 确保可执行文件有正确的权限
+if [ -f /usr/bin/tracegen ]; then
+    chmod +x /usr/bin/tracegen
+fi
+
+# 创建符号链接到配置文件（如果需要）
+if [ -d /usr/share/tracegen ] && [ ! -L /etc/tracegen ]; then
+    ln -sf /usr/share/tracegen /etc/tracegen
+fi
+
+# 输出安装成功信息
+echo "tracegen 安装完成！"
+echo "使用方法: tracegen --help"
+echo "配置文件位置: /usr/share/tracegen/"
+
+#DEBHELPER#
+
+exit 0 

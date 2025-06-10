@@ -1,0 +1,37 @@
+Source: tracegen
+Section: utils
+Priority: optional
+Maintainer: 刘某某 <liumoulu@lixiang.com>
+Build-Depends: debhelper-compat (= 13),
+               python3-dev (>= 3.8),
+               python3-setuptools,
+               python3-pip,
+               dh-python,
+               rustc,
+               cargo,
+               cmake,
+               build-essential,
+               pkg-config
+Standards-Version: 4.6.0
+Homepage: https://gitlab.lixiang.com/tools/tracegen
+Rules-Requires-Root: no
+
+Package: tracegen
+Architecture: amd64
+Depends: ${python3:Depends},
+         ${shlibs:Depends},
+         ${misc:Depends},
+         python3 (>= 3.8),
+         python3-click,
+         python3-requests,
+         python3-protobuf (>= 3.20.0)
+Description: 标准格式 Trace 生成工具
+ 将多种原始性能数据（如 CPU、GFX、PSI 等）统一转换为 Perfetto trace 文件，
+ 便于性能分析和可视化。支持车辆性能数据处理。
+ .
+ 核心特性：
+  * 多数据源适配（CPU、GFX、PSI 等）
+  * 标准格式输出
+  * 高性能多语言实现
+  * 时区自动处理
+  * 命令行和 API 双重接口 

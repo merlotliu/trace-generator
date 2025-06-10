@@ -1,0 +1,11 @@
+tracegen (1.0.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * 支持多种性能数据源（CPU、GFX、PSI）转换为 Perfetto trace
+  * 命令行和 API 双重接口
+  * 多语言实现（Python + C++ + Rust）
+  * 标准格式数据输出
+  * 时区自动处理功能
+  * 适配层设计，便于扩展新数据源
+
+ -- 刘某某 <liumoulu@lixiang.com>  Thu, 23 Jan 2025 10:00:00 +0800 
