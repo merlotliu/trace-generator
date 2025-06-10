@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-from trace_converter.perfetto import perfetto_trace_pb2 as pftrace
+from tracegen.perfetto import perfetto_trace_pb2 as pftrace
 import uuid
 import time
 from typing import Dict, Tuple, Optional, List
 import datetime
-import re
 
 def uuid64():
     return uuid.uuid4().int >> 64

@@ -1,5 +1,5 @@
 import click
-from trace_converter.api import run_trace_convert
+from tracegen.api import run_trace_convert
 
 DEFAULT_VIN = 'HLX33B127R1035023'
 DEFAULT_START_TIME = '2025-05-29 07:00:00'
@@ -7,7 +7,7 @@ DEFAULT_END_TIME = '2025-05-29 10:00:00'
 DEFAULT_TYPES = ['gfx', 'short', 'long']
 DEFAULT_TIMEZONE = '+0800'
 
-@click.command()
+@click.command(name="tracegen", help="标准格式 Trace 生成工具，将原始数据一键转为 Perfetto trace 文件")
 @click.option('-v', '--vin', default=DEFAULT_VIN, help='车辆VIN码')
 @click.option('-s', '--start-time', default=DEFAULT_START_TIME, help='开始时间，格式YYYY-MM-DD HH:MM:SS')
 @click.option('-e', '--end-time', default=DEFAULT_END_TIME, help='结束时间，格式YYYY-MM-DD HH:MM:SS')

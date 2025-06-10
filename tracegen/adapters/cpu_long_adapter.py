@@ -1,4 +1,4 @@
-from trace_converter.utils import parse_datetime_to_ms
+from tracegen.utils import parse_datetime_to_ms
 import json
 
 def cpu_long_to_standard(json_data):

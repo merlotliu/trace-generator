@@ -1,4 +1,4 @@
-# Trace Converter 标准格式 Trace 生成工具
+# Tracegen 标准格式 Trace 生成工具
 
 ## 项目简介
 
@@ -9,8 +9,8 @@
 ## 目录结构
 
 ```
-trace-converter/
-├── trace_converter/                # 主包目录，所有核心代码和API
+tracegen/
+├── tracegen/                      # 主包目录，所有核心代码和API
 │   ├── __init__.py
 │   ├── api.py                      # 主要API和实现逻辑（run_trace_convert等）
 │   ├── data_fetcher.py             # 数据获取
@@ -44,7 +44,7 @@ pip install -r requirements.txt
 支持通过 VIN、时间区间、数据类型一键获取数据并生成 trace 文件。
 
 ```bash
-python cli.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short -t gfx --timezone +0800
+tracegen -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10:14" -t short -t gfx --timezone +0800
 ```
 
 - `-v/--vin`：车辆VIN码
@@ -64,7 +64,7 @@ python cli.py -v HLX33B121R1647380 -s "2025-02-06 21:40:14" -e "2025-02-06 22:10
 可在 Python 代码中直接调用主流程：
 
 ```python
-from trace_converter.api import run_trace_convert
+from tracegen.api import run_trace_convert
 run_trace_convert(
     vin="HLX33B121R1647380",
     start_time="2025-02-06 21:40:14",

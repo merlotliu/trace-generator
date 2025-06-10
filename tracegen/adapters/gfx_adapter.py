@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
-from trace_converter.utils import parse_datetime_to_ms
+from tracegen.utils import parse_datetime_to_ms
 
 def gfx_to_standard(json_data):
     """

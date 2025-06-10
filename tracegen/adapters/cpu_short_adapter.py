@@ -1,5 +1,4 @@
-import datetime
-from trace_converter.utils import parse_offset_str, parse_datetime_to_ms
+from tracegen.utils import parse_offset_str, parse_datetime_to_ms
 import json
 
 def safe_float(val, default=0.0):
